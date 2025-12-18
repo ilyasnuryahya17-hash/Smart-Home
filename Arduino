@@ -1,0 +1,224 @@
+#include <SoftwareSerial.h>
+#include <ESP8266WiFi.h>
+#include <BlynkSimpleEsp8266.h>
+#include "VoiceRecognitionV3.h"
+
+#define BLYNK_TEMPLATE_ID "TMPLC6gT3XcB"
+#define BLYNK_TEMPLATE_NAME "Smart Home ilyas"
+#define BLYNK_AUTH_TOKEN "wacBNrsA4M92bcDSYDhTMDFTZijHG2z1"
+#define BLYNK_PRINT Serial
+
+VR myVR(D2,D3);    // 2:RX 3:TX, you can choose your favourite pins.
+
+uint8_t records[7]; // save record
+uint8_t buf[64];
+
+char ssid[] = "Redmi";
+char pass[] = "123456789";
+char auth[] = BLYNK_AUTH_TOKEN;
+
+#define lampu D6
+#define kipas D7
+#define pintu D1
+
+#define Onlampu   (0)
+#define Offlampu  (1)
+#define Onkipas   (2)
+#define Offkipas  (3)
+#define Onpintu   (4)
+#define Offpintu  (5)
+#define Offsemua  (6) 
+
+void printSignature(uint8_t *buf, int len){
+  int i;
+  for(i=0; i<len; i++){
+    if(buf[i]>0x19 && buf[i]<0x7F){
+      Serial.write(buf[i]);
+    }
+    else{
+      Serial.print("[");
+      Serial.print(buf[i], HEX);
+      Serial.print("]");
+    }
+  }
+}
+
+void printVR(uint8_t *buf){
+  Serial.println("VR Index\tGroup\tRecordNum\tSignature");
+
+  Serial.print(buf[2], DEC);
+  Serial.print("\t\t");
+
+  if(buf[0] == 0xFF){
+    Serial.print("NONE");
+  }
+  else if(buf[0]&0x80){
+    Serial.print("UG ");
+    Serial.print(buf[0]&(~0x80), DEC);
+  }
+  else{
+    Serial.print("SG ");
+    Serial.print(buf[0], DEC);
+  }
+  Serial.print("\t");
+
+  Serial.print(buf[1], DEC);
+  Serial.print("\t\t");
+  if(buf[3]>0){
+    printSignature(buf+4, buf[3]);
+  }
+  else{
+    Serial.print("NONE");
+  }
+  Serial.println("\r\n");
+}
+
+void setup(){
+  myVR.begin(9600);
+  
+  Serial.begin(115200);
+  Blynk.begin (auth, ssid, pass, "blynk.cloud" , 80);
+  Serial.println("Welcome Sir");
+  
+  pinMode(lampu, OUTPUT);
+  pinMode(kipas, OUTPUT);
+  pinMode(pintu, OUTPUT);
+  
+  digitalWrite(lampu, HIGH);
+  digitalWrite(kipas, HIGH);
+  digitalWrite(pintu, HIGH);
+    
+  if(myVR.clear() == 0){
+    Serial.println("Recognizer cleared.");
+  }
+  else{
+    Serial.println("Not find VoiceRecognitionModule.");
+    Serial.println("Please check connection and restart Arduino.");
+    while(1);
+  }
+  
+  if (myVR.load((uint8_t)Onlampu) >= 0) {
+    Serial.println("Lampu Hidup");
+  }
+  if (myVR.load((uint8_t)Offlampu) >= 0) {
+    Serial.println("Lampu Mati");
+  }
+  if (myVR.load((uint8_t)Onkipas) >= 0) {
+    Serial.println("Kipas Nyala");
+  }
+  if (myVR.load((uint8_t)Offkipas) >= 0) {
+    Serial.println("Kipas Mati");
+  }
+  if (myVR.load((uint8_t)Onpintu) >= 0) {
+    Serial.println("Pintu dikunci");
+  }
+  if (myVR.load((uint8_t)Offpintu) >= 0) {
+    Serial.println("Pintu dibuka");
+  }
+  if (myVR.load((uint8_t)Offsemua) >= 0) {
+    Serial.println("Mati Semua");
+  }
+}
+
+void loop(){
+  Blynk.run();
+  int ret;
+  ret = myVR.recognize(buf, 50);
+  if(ret>0){
+    switch(buf[1]){
+      case Onlampu:
+        digitalWrite(lampu, LOW);
+        Blynk.virtualWrite(V0, 1);
+        break;
+      case Offlampu:
+        digitalWrite(lampu, HIGH);
+        Blynk.virtualWrite(V0, 0);
+        break;
+      case Onkipas:
+        digitalWrite(kipas, LOW);
+        Blynk.virtualWrite(V1, 1);
+        break;
+      case Offkipas:
+        digitalWrite(kipas, HIGH);
+        Blynk.virtualWrite(V1, 0);
+        break;
+      case Onpintu:
+        digitalWrite(pintu, LOW);
+        Blynk.virtualWrite(V2, 1);
+        break;
+      case Offpintu:
+        digitalWrite(pintu, HIGH);
+        Blynk.virtualWrite(V2, 0);
+        break;
+      case Offsemua:
+        digitalWrite(lampu, HIGH);
+        digitalWrite(kipas, HIGH);
+        digitalWrite(pintu, HIGH);
+        Blynk.virtualWrite(V0, 0);
+        Blynk.virtualWrite(V1, 0);
+        Blynk.virtualWrite(V2, 0);
+        Blynk.virtualWrite(V3, 0);
+      break; default:
+        Serial.println("Record function undefined");  break;
+    }
+    printVR(buf); /** voice recognized */
+  }
+}
+
+BLYNK_WRITE(V0) {
+  int StatusLampu = param.asInt();
+  if (StatusLampu == 1) {
+    digitalWrite(lampu, LOW);
+    Serial.println("Lampu Nyala");
+  }
+  else {
+    digitalWrite(lampu, HIGH);
+    Serial.println("Lampu Mati");
+  }
+}
+
+BLYNK_WRITE(V1) {
+  int StatusKipas = param.asInt();
+  if (StatusKipas == 1) {
+    digitalWrite(kipas, LOW);
+    Serial.println("Kipas Nyala");
+  }
+  else {
+    digitalWrite(kipas, HIGH);
+    Serial.println("Kipas Mati");
+  }
+}
+
+BLYNK_WRITE(V2) {
+  int StatusPintu = param.asInt();
+  if (StatusPintu == 1) {
+    digitalWrite(pintu, LOW);
+    Serial.println("Buka Pintu");
+  }
+  else {
+    digitalWrite(pintu, HIGH);
+    Serial.println("Tutup Pintu");
+  }
+}
+
+BLYNK_WRITE(V3) {
+  int Statusemua = param.asInt();
+  if (Statusemua == 1) {
+    digitalWrite(kipas, LOW);
+    digitalWrite(lampu, LOW);
+    digitalWrite(pintu, LOW);
+    Blynk.virtualWrite(V0, 1);
+    Blynk.virtualWrite(V1, 1);
+    Blynk.virtualWrite(V2, 1);
+    Serial.println("Nyala Semua");
+  }
+  else {
+    digitalWrite(kipas, HIGH);
+    digitalWrite(lampu, HIGH);
+    digitalWrite(pintu, HIGH);
+    Blynk.virtualWrite(V0, 0);
+    Blynk.virtualWrite(V1, 0);
+    Blynk.virtualWrite(V2, 0);
+    Serial.println("Mati Semua");
+  }
+}
